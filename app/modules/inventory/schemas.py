@@ -20,6 +20,7 @@ class BookCreate(BookBase):
 
 class Book(BookBase):
     id: int
+    tenant_id: str
     created_at: Optional[datetime] = None
 
     class Config:

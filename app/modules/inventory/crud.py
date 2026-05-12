@@ -1,14 +1,21 @@
 from sqlalchemy.orm import Session
 from . import models, schemas
 
-def get_books(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Book).offset(skip).limit(limit).all()
+def get_books(db: Session, tenant_id: str, skip: int = 0, limit: int = 100):
+    if not tenant_id or tenant_id == "default":
+        # Do NOT fallback to default for school data. Force an error or return nothing.
+        # This prevents Account A from seeing the "default" data if their header is missing.
+        logger.warning("Attempted to access inventory without a specific tenant_id")
+        return []
+    
+    return db.query(models.Book).filter(models.Book.tenant_id == tenant_id).offset(skip).limit(limit).all()
 
-def get_book(db: Session, book_id: int):
-    return db.query(models.Book).filter(models.Book.id == book_id).first()
+def get_book(db: Session, tenant_id: str, book_id: int):
+    return db.query(models.Book).filter(models.Book.tenant_id == tenant_id, models.Book.id == book_id).first()
 
-def create_book(db: Session, book: schemas.BookCreate):
+def create_book(db: Session, tenant_id: str, book: schemas.BookCreate):
     db_book = models.Book(
+        tenant_id=tenant_id,
         name=book.name,
         book_class=book.book_class,
         book_type=book.book_type,
@@ -26,8 +33,8 @@ def create_book(db: Session, book: schemas.BookCreate):
     db.refresh(db_book)
     return db_book
 
-def update_book(db: Session, book_id: int, book: schemas.BookCreate):
-    db_book = db.query(models.Book).filter(models.Book.id == book_id).first()
+def update_book(db: Session, tenant_id: str, book_id: int, book: schemas.BookCreate):
+    db_book = db.query(models.Book).filter(models.Book.tenant_id == tenant_id, models.Book.id == book_id).first()
     if db_book:
         db_book.name = book.name
         db_book.book_class = book.book_class
@@ -44,8 +51,8 @@ def update_book(db: Session, book_id: int, book: schemas.BookCreate):
         db.refresh(db_book)
     return db_book
 
-def delete_book(db: Session, book_id: int):
-    db_book = db.query(models.Book).filter(models.Book.id == book_id).first()
+def delete_book(db: Session, tenant_id: str, book_id: int):
+    db_book = db.query(models.Book).filter(models.Book.tenant_id == tenant_id, models.Book.id == book_id).first()
     if db_book:
         db.delete(db_book)
         db.commit()

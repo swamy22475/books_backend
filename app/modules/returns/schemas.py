@@ -18,6 +18,7 @@ class ReturnUpdate(BaseModel):
 
 class ReturnEntry(ReturnBase):
     id: int
+    tenant_id: str
     created_at: datetime
 
     class Config:

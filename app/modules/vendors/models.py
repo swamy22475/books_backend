@@ -17,4 +17,5 @@ class Vendor(Base):
     remaining_amount = Column(Float, default=0.0)
     bill_no = Column(String(100), nullable=True)
     status = Column(String(20), default="Active")
+    tenant_id = Column(String(50), index=True, nullable=False, default="default")
     created_at = Column(DateTime(timezone=True), server_default=func.now())

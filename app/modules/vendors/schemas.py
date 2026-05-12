@@ -20,6 +20,7 @@ class VendorCreate(VendorBase):
 
 class Vendor(VendorBase):
     id: int
+    tenant_id: str
     created_at: datetime
 
     class Config:

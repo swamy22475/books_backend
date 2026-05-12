@@ -1,10 +1,11 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 class SaleBase(BaseModel):
     book_id: int = None
     student_name: str
+    student_phone: Optional[str] = None
     student_class: str = Field(..., alias="class")
     book_name: str
     book_type: str = "Set"
@@ -25,8 +26,9 @@ class SaleCreate(SaleBase):
 
 class Sale(SaleBase):
     id: int
+    tenant_id: str
     date: datetime
 
     class Config:
         from_attributes = True
-        allow_population_by_field_name = True
+        validate_by_name = True

@@ -17,4 +17,5 @@ class Book(Base):
     stock_available = Column(Integer, default=0)
     vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=True)
     vendor_name = Column(String(150), nullable=True)   # denormalised for quick display
+    tenant_id = Column(String(50), index=True, nullable=False, default="default")
     created_at = Column(DateTime(timezone=True), server_default=func.now())

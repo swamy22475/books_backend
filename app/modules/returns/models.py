@@ -13,4 +13,5 @@ class ReturnEntry(Base):
     qty = Column(Integer, default=1)
     reason = Column(String(255))
     status = Column(String(50), default="Pending")
+    tenant_id = Column(String(50), index=True, nullable=False, default="default")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
