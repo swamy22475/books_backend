@@ -19,6 +19,7 @@ def create_sale(db: Session, tenant_id: str, sale: schemas.SaleCreate):
         student_name=data.get("student_name"),
         student_phone=data.get("student_phone"),
         student_class=data.get("class"),
+        student_section=data.get("student_section"),
         book_name=data.get("book_name"),
         book_type=data.get("book_type", "Set"),
         qty=data.get("qty"),
@@ -42,7 +43,10 @@ def create_sale(db: Session, tenant_id: str, sale: schemas.SaleCreate):
         db_stock = StockEntry(
             tenant_id=tenant_id,
             book_id=db_sale.book_id,
-            quantity=-db_sale.qty  # Negative to show stock going out
+            book_name=db_sale.book_name,
+            quantity=-db_sale.qty,  # Negative to show stock going out
+            movement_type="sale",
+            remarks=f"Sale to {db_sale.student_name}"
         )
         db.add(db_stock)
             
@@ -75,6 +79,7 @@ def update_sale(db: Session, tenant_id: str, sale_id: int, sale: schemas.SaleCre
         db_sale.student_name = data.get("student_name")
         db_sale.student_phone = data.get("student_phone")
         db_sale.student_class = data.get("class")
+        db_sale.student_section = data.get("student_section")
         db_sale.book_name = data.get("book_name")
         db_sale.book_type = data.get("book_type")
         db_sale.qty = data.get("qty")

@@ -10,6 +10,7 @@ class Sale(Base):
     student_name = Column(String(100), nullable=False)
     student_phone = Column(String(20), nullable=True)
     student_class = Column("class", String(20))
+    student_section = Column(String(50), nullable=True)
     book_name = Column(String(100))
     book_type = Column(String(20), default="Set")
     qty = Column(Integer, default=1)

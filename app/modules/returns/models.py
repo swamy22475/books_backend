@@ -6,11 +6,14 @@ class ReturnEntry(Base):
     __tablename__ = "returns"
 
     id = Column(Integer, primary_key=True, index=True)
+    sale_id = Column(Integer, index=True, nullable=True)
     book_id = Column(Integer, index=True, nullable=True)
     student_name = Column(String(100), nullable=False)
     student_class = Column(String(50))
     book_name = Column(String(150), nullable=False)
     qty = Column(Integer, default=1)
+    unit_price = Column(Float, default=0.0)
+    total_amount = Column(Float, default=0.0)
     reason = Column(String(255))
     status = Column(String(50), default="Pending")
     tenant_id = Column(String(50), index=True, nullable=False, default="default")

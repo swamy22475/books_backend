@@ -7,6 +7,7 @@ class SaleBase(BaseModel):
     student_name: str
     student_phone: Optional[str] = None
     student_class: str = Field(..., alias="class")
+    student_section: Optional[str] = None
     book_name: str
     book_type: str = "Set"
     qty: int = 1
