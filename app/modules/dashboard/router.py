@@ -12,6 +12,115 @@ from datetime import datetime, timedelta
 
 router = APIRouter()
 
+def _amount(value):
+    return float(value or 0)
+
+def _sale_bill_key(sale):
+    sale_day = sale.date.date().isoformat() if sale.date else ""
+    return "|".join([
+        sale.student_name or "",
+        sale.student_phone or "",
+        sale.student_class or "",
+        sale.student_section or "",
+        sale_day,
+        sale.payment_method or ""
+    ])
+
+def _same_return_target(sale, entry):
+    if entry.student_name and (sale.student_name or "").strip().lower() != entry.student_name.strip().lower():
+        return False
+    if entry.book_name and (sale.book_name or "").strip().lower() != entry.book_name.strip().lower():
+        return False
+    if entry.student_class and sale.student_class and sale.student_class.strip().lower() != entry.student_class.strip().lower():
+        return False
+    return bool(entry.student_name or entry.book_name)
+
+def _add_return_adjustment(adjustments, sale, qty, amount):
+    if not sale or not sale.id or qty <= 0:
+        return
+    if sale.id not in adjustments:
+        adjustments[sale.id] = {"qty": 0, "amount": 0.0}
+    adjustments[sale.id]["qty"] += qty
+    adjustments[sale.id]["amount"] += amount
+
+def _return_adjustments(sales, approved_returns):
+    sales_by_id = {sale.id: sale for sale in sales}
+    adjustments = {}
+
+    for entry in approved_returns:
+        direct_sale = sales_by_id.get(entry.sale_id) if entry.sale_id else None
+        if direct_sale:
+            _add_return_adjustment(adjustments, direct_sale, int(entry.qty or 0), _amount(entry.total_amount))
+            continue
+
+        remaining_qty = int(entry.qty or 0)
+        return_unit_price = _amount(entry.unit_price)
+        candidates = sorted(
+            [sale for sale in sales if _same_return_target(sale, entry)],
+            key=lambda sale: sale.date or datetime.min
+        )
+        for sale in candidates:
+            if remaining_qty <= 0:
+                break
+            already_returned = int(adjustments.get(sale.id, {}).get("qty", 0))
+            available_qty = max(int(sale.qty or 0) - already_returned, 0)
+            qty = min(available_qty, remaining_qty)
+            unit_price = return_unit_price or _amount(sale.unit_price)
+            _add_return_adjustment(adjustments, sale, qty, unit_price * qty)
+            remaining_qty -= qty
+
+    return adjustments
+
+def _net_sales_metrics(sales, approved_returns):
+    return_adjustments = _return_adjustments(sales, approved_returns)
+
+    bills = {}
+    total_sold = 0
+    total_returns = 0
+    return_amount = 0.0
+
+    for sale in sales:
+        returned_qty = return_adjustments.get(sale.id, {}).get("qty", 0)
+        returned_amount = return_adjustments.get(sale.id, {}).get("amount", 0.0)
+        net_qty = max(int(sale.qty or 0) - returned_qty, 0)
+        net_amount = max(_amount(sale.total_amount) - returned_amount, 0.0)
+        total_sold += net_qty
+
+        key = _sale_bill_key(sale)
+        if key not in bills:
+            bills[key] = {
+                "total_amount": 0.0,
+                "concession": _amount(sale.concession),
+                "paid_amount": _amount(sale.paid_amount)
+            }
+        bills[key]["total_amount"] += net_amount
+
+    for entry in approved_returns:
+        total_returns += int(entry.qty or 0)
+        return_amount += _amount(entry.total_amount)
+
+    total_revenue = 0.0
+    total_paid = 0.0
+    total_due = 0.0
+    total_refund_due = 0.0
+    for bill in bills.values():
+        net_total = max(bill["total_amount"] - bill["concession"], 0.0)
+        paid = bill["paid_amount"]
+        total_revenue += net_total
+        total_paid += min(paid, net_total)
+        total_due += max(net_total - paid, 0.0)
+        total_refund_due += max(paid - net_total, 0.0)
+
+    return {
+        "total_sold": total_sold,
+        "total_revenue": total_revenue,
+        "total_paid": total_paid,
+        "total_due": total_due,
+        "total_refund_due": total_refund_due,
+        "total_returns": total_returns,
+        "return_amount": return_amount
+    }
+
 @router.get("/")
 async def get_dashboard_summary(
     period: str = "Today", 
@@ -52,10 +161,8 @@ async def get_dashboard_summary(
     total_stock = db.query(func.sum(Book.stock_available)).filter(Book.tenant_id == tenant_id).scalar() or 0
     total_titles = db.query(func.count(Book.id)).filter(Book.tenant_id == tenant_id).scalar() or 0
     
-    # Filtered KPIs
-    total_sold = sales_query.with_entities(func.sum(Sale.qty)).scalar() or 0
-    total_revenue = sales_query.with_entities(func.sum(Sale.total_amount)).scalar() or 0
-    return_count = returns_query.with_entities(func.count(ReturnEntry.id)).scalar() or 0
+    approved_returns_query = returns_query.filter(ReturnEntry.status == "Approved")
+    net_metrics = _net_sales_metrics(sales_query.all(), approved_returns_query.all())
 
     # 2. Recent Sales (Filtered by period)
     recent_sales = sales_query.order_by(Sale.date.desc()).limit(6).all()
@@ -98,15 +205,25 @@ async def get_dashboard_summary(
         Sale.date >= chart_start_date
     ).group_by(func.date(Sale.date)).all()
 
+    returned_rows = db.query(
+        func.date(ReturnEntry.created_at).label("day"),
+        func.sum(ReturnEntry.qty).label("returned")
+    ).filter(
+        ReturnEntry.tenant_id == tenant_id,
+        ReturnEntry.status == "Approved",
+        ReturnEntry.created_at >= chart_start_date
+    ).group_by(func.date(ReturnEntry.created_at)).all()
+
     stock_by_day = {row.day: int(row.stock or 0) for row in stock_rows}
     sold_by_day = {row.day: int(row.sold or 0) for row in sold_rows}
+    returned_by_day = {row.day: int(row.returned or 0) for row in returned_rows}
 
     stock_vs_sold = [
         {
             "day": day.strftime("%d %b"),
             "date": day.isoformat(),
             "stock": stock_by_day.get(day, 0),
-            "sold": sold_by_day.get(day, 0)
+            "sold": max(sold_by_day.get(day, 0) - returned_by_day.get(day, 0), 0)
         }
         for day in days
     ]
@@ -114,17 +231,35 @@ async def get_dashboard_summary(
     # 8. Monthly Sales & Revenue
     monthly_rows = db.query(
         func.month(Sale.date).label("month"),
-        func.count(Sale.id).label("sales"),
+        func.sum(Sale.qty).label("sales"),
         func.sum(Sale.total_amount).label("revenue")
     ).filter(
         Sale.tenant_id == tenant_id,
         Sale.date >= today.replace(month=1, day=1)
     ).group_by(func.month(Sale.date)).all()
 
+    monthly_return_rows = db.query(
+        func.month(ReturnEntry.created_at).label("month"),
+        func.sum(ReturnEntry.qty).label("returned"),
+        func.sum(ReturnEntry.total_amount).label("return_amount")
+    ).filter(
+        ReturnEntry.tenant_id == tenant_id,
+        ReturnEntry.status == "Approved",
+        ReturnEntry.created_at >= today.replace(month=1, day=1)
+    ).group_by(func.month(ReturnEntry.created_at)).all()
+
+    monthly_returns_lookup = {
+        row.month: {
+            "returned": int(row.returned or 0),
+            "return_amount": float(row.return_amount or 0)
+        }
+        for row in monthly_return_rows
+    }
+
     monthly_lookup = {
         row.month: {
-            "sales": int(row.sales or 0),
-            "revenue": float(row.revenue or 0)
+            "sales": max(int(row.sales or 0) - monthly_returns_lookup.get(row.month, {}).get("returned", 0), 0),
+            "revenue": max(float(row.revenue or 0) - monthly_returns_lookup.get(row.month, {}).get("return_amount", 0), 0)
         }
         for row in monthly_rows
     }
@@ -144,9 +279,13 @@ async def get_dashboard_summary(
             "active_vendors": active_vendors,
             "total_stock": total_stock,
             "total_titles": total_titles,
-            "total_sold": total_sold,
-            "total_revenue": total_revenue,
-            "total_returns": return_count
+            "total_sold": net_metrics["total_sold"],
+            "total_revenue": net_metrics["total_revenue"],
+            "total_paid": net_metrics["total_paid"],
+            "total_due": net_metrics["total_due"],
+            "total_refund_due": net_metrics["total_refund_due"],
+            "total_returns": net_metrics["total_returns"],
+            "return_amount": net_metrics["return_amount"]
         },
         "recent_sales": [
             {
