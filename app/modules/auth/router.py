@@ -200,9 +200,9 @@ async def login(credentials: schemas.UserLogin, db: Session = Depends(get_db)):
 @router.post("/school-login", response_model=schemas.Token)
 @router.post("/schools/login", response_model=schemas.Token)
 async def school_login(credentials: schemas.UserLogin, db: Session = Depends(get_db)):
-    """School portal login. Admin accounts must use the admin login page."""
+    """School portal login. Only for non-default tenant users."""
     user = _authenticate_user(credentials, db)
-    if user.tenant_id == "default" or user.is_admin:
+    if user.tenant_id == "default":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Please use /admin/login for admin access."
