@@ -18,6 +18,7 @@ from .modules.returns.router import router as returns_router
 from .modules.reports.router import router as reports_router
 from .modules.dashboard.router import router as dashboard_router
 from .modules.auth.router import router as auth_router
+from .modules.academics.router import router as academics_router
 
 # FastAPI App
 app = FastAPI(
@@ -113,6 +114,7 @@ async def startup_event():
             from .modules.sales.models import Sale
             from .modules.returns.models import ReturnEntry
             from .modules.auth.models import User, School
+            from .modules.academics.models import AcademicClass, AcademicSection
 
             logger.info("Creating database tables...")
             
@@ -177,4 +179,10 @@ app.include_router(
 app.include_router(
     auth_router,
     tags=["Authentication"]
+)
+
+app.include_router(
+    academics_router,
+    prefix=f"{api_v1_prefix}/academics",
+    tags=["Academics"]
 )
