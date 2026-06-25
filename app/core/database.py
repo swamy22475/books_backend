@@ -71,6 +71,9 @@ def ensure_optional_columns():
 def init_db():
     global engine, SessionLocal
     
+    if engine is not None:
+        return True
+    
     if not DATABASE_URL:
         logger.error("DATABASE_URL not found in environment!")
         return False
@@ -78,7 +81,10 @@ def init_db():
     try:
         engine = create_engine(
             DATABASE_URL,
-            pool_pre_ping=True
+            pool_pre_ping=True,
+            pool_recycle=3600,
+            pool_size=10,
+            max_overflow=20
         )
 
         SessionLocal = sessionmaker(

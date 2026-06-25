@@ -1,9 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 # Database
-from .core.database import init_db
+from .core.database import init_db, get_db
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -55,13 +57,13 @@ async def root():
 # HEALTH CHECK
 # =========================
 @app.get("/health")
-async def health_check():
+async def health_check(db: Session = Depends(get_db)):
     try:
-        db_status = init_db()
+        db.execute(text("SELECT 1"))
 
         return {
             "status": "online",
-            "database": "connected" if db_status else "failed/disconnected"
+            "database": "connected"
         }
 
     except Exception as e:
@@ -75,17 +77,12 @@ async def health_check():
 # DATABASE TEST ROUTE
 # =========================
 @app.get("/test-db")
-async def test_db():
+async def test_db(db: Session = Depends(get_db)):
     try:
-        db_status = init_db()
-
-        if db_status:
-            return {
-                "database": "connected"
-            }
+        db.execute(text("SELECT 1"))
 
         return {
-            "database": "failed"
+            "database": "connected"
         }
 
     except Exception as e:
